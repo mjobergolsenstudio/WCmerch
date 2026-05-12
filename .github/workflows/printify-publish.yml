@@ -34,6 +34,7 @@ jobs:
         env:
           PRINTIFY_API_KEY: ${{ secrets.PRINTIFY_API_KEY }}
           PRINTIFY_SHOP_ID: ${{ secrets.PRINTIFY_SHOP_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python scripts/publish_to_printify.py
 
