@@ -41,6 +41,7 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
+          mkdir -p designs/published
           find designs/new -name "*.png" -o -name "*.svg" -o -name "*.jpg" -o -name "*.jpeg" | while read f; do
             mv "$f" "designs/published/$(basename $f)"
           done
