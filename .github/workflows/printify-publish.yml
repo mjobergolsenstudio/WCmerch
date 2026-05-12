@@ -1,0 +1,49 @@
+name: Publish designs to Printify
+
+on:
+  push:
+    paths:
+      - 'designs/new/**'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests Pillow
+
+      - name: Get new design files
+        id: get_files
+        run: |
+          NEW_FILES=$(git diff --name-only HEAD~1 HEAD -- 'designs/new/' | grep -E '\.(png|svg|jpg|jpeg)$' || true)
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$NEW_FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Publish to Printify
+        env:
+          PRINTIFY_API_KEY: ${{ secrets.PRINTIFY_API_KEY }}
+          PRINTIFY_SHOP_ID: ${{ secrets.PRINTIFY_SHOP_ID }}
+        run: |
+          python scripts/publish_to_printify.py
+
+      - name: Move published files
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          find designs/new -name "*.png" -o -name "*.svg" -o -name "*.jpg" -o -name "*.jpeg" | while read f; do
+            mv "$f" "designs/published/$(basename $f)"
+          done
+          git add -A
+          git diff --staged --quiet || git commit -m "✅ Moved published designs"
+          git push
