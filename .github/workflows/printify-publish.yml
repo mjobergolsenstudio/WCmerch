@@ -5,8 +5,13 @@ from pathlib import Path
 import base64
 
 API_KEY = os.environ["PRINTIFY_API_KEY"]
-SHOP_ID = os.environ["PRINTIFY_SHOP_ID"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+
+# Publiserer til både Shopify og Etsy
+SHOP_IDS = [
+    {"id": "27515383", "name": "Shopify (wcmerch.shop)"},
+    {"id": "27515021", "name": "Etsy (World Cup Merch)"},
+]
 
 HEADERS = {
     "Authorization": f"Bearer {API_KEY}",
@@ -62,7 +67,6 @@ PRODUCTS = [
 
 
 def generate_seo(design_name, product_type):
-    """Use Claude API to generate SEO title, description and tags."""
     print(f"🤖 Genererer SEO for: {design_name} – {product_type}")
 
     prompt = f"""You are an expert Shopify/Etsy SEO copywriter for FIFA World Cup 2026 merchandise.
@@ -74,7 +78,7 @@ Generate SEO-optimized content for this product. Respond ONLY with valid JSON, n
 {{
   "title": "SEO product title (max 70 chars, include country, World Cup 2026, product type)",
   "description": "3-4 sentence product description. Mention the country, FIFA World Cup 2026, great gift idea, and product quality. Enthusiastic tone.",
-  "tags": ["array", "of", "10", "relevant", "tags", "for", "shopify"]
+  "tags": ["array", "of", "10", "relevant", "tags", "for", "shopify", "and", "etsy"]
 }}"""
 
     response = requests.post(
@@ -92,24 +96,22 @@ Generate SEO-optimized content for this product. Respond ONLY with valid JSON, n
     )
 
     if response.status_code != 200:
-        print(f"⚠️  Claude API feil, bruker standard tekst: {response.text}")
+        print(f"⚠️  Claude API feil, bruker standard tekst.")
         return None
 
     text = response.json()["content"][0]["text"].strip()
-    # Strip markdown fences if present
     text = text.replace("```json", "").replace("```", "").strip()
     return json.loads(text)
 
 
-def upload_image(image_path):
+def upload_image(image_path, shop_id):
     path = Path(image_path)
-    print(f"📤 Laster opp bilde: {path.name}")
+    print(f"📤 Laster opp bilde til shop {shop_id}: {path.name}")
 
     with open(path, "rb") as f:
         image_data = f.read()
 
     encoded = base64.b64encode(image_data).decode("utf-8")
-    mime_type = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
 
     response = requests.post(
         f"{BASE_URL}/uploads/images.json",
@@ -122,20 +124,19 @@ def upload_image(image_path):
     return image_id
 
 
-def create_product(design_name, image_id, product_config, seo):
+def create_product(design_name, image_id, product_config, seo, shop_id):
     product_type = product_config["name"]
-    full_name = f"{design_name} – {product_type}"
 
     if seo:
         title = seo["title"]
         description = seo["description"]
         tags = seo["tags"]
     else:
-        title = full_name
+        title = f"{design_name} – {product_type} – World Cup 2026"
         description = f"Official FIFA World Cup 2026 {product_type} – {design_name}. Perfect gift for football fans!"
         tags = ["World Cup 2026", "FIFA", "football", design_name, product_type]
 
-    print(f"🛍️  Oppretter produkt: {title}")
+    print(f"🛍️  Oppretter produkt i shop {shop_id}: {title}")
 
     placeholders = [{
         "position": product_config["print_area"],
@@ -160,7 +161,7 @@ def create_product(design_name, image_id, product_config, seo):
     }
 
     response = requests.post(
-        f"{BASE_URL}/shops/{SHOP_ID}/products.json",
+        f"{BASE_URL}/shops/{shop_id}/products.json",
         headers=HEADERS,
         json=payload,
     )
@@ -173,10 +174,10 @@ def create_product(design_name, image_id, product_config, seo):
     return product_id
 
 
-def publish_product(product_id, title):
-    print(f"🚀 Publiserer: {title}")
+def publish_product(product_id, title, shop_id):
+    print(f"🚀 Publiserer til shop {shop_id}: {title}")
     response = requests.post(
-        f"{BASE_URL}/shops/{SHOP_ID}/products/{product_id}/publish.json",
+        f"{BASE_URL}/shops/{shop_id}/products/{product_id}/publish.json",
         headers=HEADERS,
         json={"title": True, "description": True, "images": True, "variants": True, "tags": True},
     )
@@ -203,18 +204,22 @@ def main():
         print(f"🎨 Behandler design: {design_file.name}")
         design_name = design_file.stem.replace("-", " ").replace("_", " ").title()
 
-        image_id = upload_image(design_file)
-        if not image_id:
-            continue
+        for shop in SHOP_IDS:
+            print(f"\n📦 Butikk: {shop['name']}")
+            shop_id = shop["id"]
 
-        for product_config in PRODUCTS:
-            seo = generate_seo(design_name, product_config["name"])
-            product_id = create_product(design_name, image_id, product_config, seo)
-            if product_id:
-                title = seo["title"] if seo else f"{design_name} – {product_config['name']}"
-                publish_product(product_id, title)
+            image_id = upload_image(design_file, shop_id)
+            if not image_id:
+                continue
 
-    print(f"\n🎉 Ferdig! Alle produkter publisert med AI-generert SEO.")
+            for product_config in PRODUCTS:
+                seo = generate_seo(design_name, product_config["name"])
+                product_id = create_product(design_name, image_id, product_config, seo, shop_id)
+                if product_id:
+                    title = seo["title"] if seo else f"{design_name} – {product_config['name']}"
+                    publish_product(product_id, title, shop_id)
+
+    print(f"\n🎉 Ferdig! Alle produkter publisert til Shopify og Etsy.")
 
 
 if __name__ == "__main__":
